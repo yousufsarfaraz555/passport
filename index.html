@@ -327,7 +327,7 @@
             </div>
 
             <!-- Canvas View Box -->
-            <div class="flex-1 bg-slate-950 border border-slate-800 rounded-2xl relative overflow-hidden flex items-center justify-center shadow-inner">
+            <div class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl relative overflow-hidden flex items-center justify-center shadow-inner">
                 <canvas id="crop-canvas" class="cursor-grab active:cursor-grabbing max-w-full max-h-full object-contain"></canvas>
 
                 <!-- Guideline Legend -->
@@ -539,7 +539,7 @@
         const LOG_KEY = 'passportKioskLog';
         const EXPORTED_KEY = 'passportKioskLogExported';
         const IDLE_MINUTES = 10;
-        const LOCK_ON_IDLE = false;
+        const LOCK_ON_IDLE = true; // Auto-locks and requires PIN back on inactivity timeout
 
         /* Application State */
         let currentOrder = null;
@@ -1124,7 +1124,8 @@
             cropCanvas.width = canvasWidth;
             cropCanvas.height = canvasHeight;
 
-            cropCtx.fillStyle = '#020617';
+            // Updated background color to medium grey (#475569) so images pushed out of frame are clearly distinguishable
+            cropCtx.fillStyle = '#475569';
             cropCtx.fillRect(0, 0, canvasWidth, canvasHeight);
 
             cropCtx.save();
@@ -1170,7 +1171,7 @@
             ctx.stroke();
 
             // Center Line
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.setLineDash([4, 4]);
             ctx.beginPath();
             ctx.moveTo(w / 2, 0);
@@ -1409,15 +1410,9 @@
             ctx.putImageData(output, 0, 0);
         }
 
-        /* Download Single Cropped Photo strictly complying with Passport Seva Portal specifications:
-           - Exact pixel dimensions: 630x810
-           - File format: JPEG (.jpg)
-           - File size constraint: 10 KB to 250 KB
-        */
         function downloadSinglePhoto() {
             if (!adjustCanvas) return;
 
-            // Create offscreen canvas locked to 630x810 pixels
             const portalCanvas = document.createElement('canvas');
             portalCanvas.width = 630;
             portalCanvas.height = 810;
@@ -1426,11 +1421,9 @@
             pCtx.fillRect(0, 0, 630, 810);
             pCtx.drawImage(adjustCanvas, 0, 0, 630, 810);
 
-            // Compress iteratively to ensure output JPEG size is strictly between 10 KB and 250 KB
             let quality = 0.92;
             let dataUrl = portalCanvas.toDataURL('image/jpeg', quality);
             
-            // Check byte size approximation from base64 string length
             let base64Length = dataUrl.length - (dataUrl.indexOf(',') + 1);
             let sizeInBytes = (base64Length * 3) / 4;
 
@@ -1454,8 +1447,8 @@
         function generate6x4PrintSheet() {
             if (!adjustCanvas || !printCanvas) return null;
 
-            const sheetW = 1800; // 6 inches @ 300 DPI
-            const sheetH = 1200; // 4 inches @ 300 DPI
+            const sheetW = 1800;
+            const sheetH = 1200;
 
             printCanvas.width = sheetW;
             printCanvas.height = sheetH;
