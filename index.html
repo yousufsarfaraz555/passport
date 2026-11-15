@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Silver Halide Works - Passport Photo Kiosk</title>
+    <title>SwiftPrint &amp; Photo - Passport Photo Kiosk</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Phosphor Icons for Kiosk UI -->
@@ -126,7 +126,7 @@
             <i class="ph-bold ph-lock-key text-4xl text-slate-200"></i>
         </div>
         <div class="text-center">
-            <h2 class="text-2xl font-bold text-white">Silver Halide Works - Terminal Lock</h2>
+            <h2 class="text-2xl font-bold text-white">SwiftPrint &amp; Photo - Terminal Lock</h2>
             <p id="pin-msg" class="text-sm text-slate-400 mt-1">Enter 4-Digit Kiosk PIN</p>
         </div>
         <div id="pin-dots" class="flex gap-4"></div>
@@ -140,8 +140,8 @@
                 <i class="ph-bold ph-aperture text-2xl text-slate-200"></i>
             </div>
             <div>
-                <h1 class="text-xl font-bold tracking-wide text-white">SILVER HALIDE WORKS</h1>
-                <p class="text-xs text-slate-400 font-medium">Passport Photo & Print Kiosk</p>
+                <h1 class="text-xl font-bold tracking-wide text-white">SWIFTPRINT &amp; PHOTO</h1>
+                <p class="text-xs text-slate-400 font-medium">A Unit of Silver Halide Works • Passport Photo &amp; Print Kiosk</p>
             </div>
         </div>
 
@@ -462,7 +462,7 @@
 
                     <!-- Download High-Res 6x4 Sheet (PNG / PDF ready) -->
                     <button onclick="download6x4Sheet()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer">
-                        <i class="ph-bold ph-download-simple text-base"></i> Save & Download 6x4 Sheet (PNG)
+                        <i class="ph-bold ph-download-simple text-base"></i> Save &amp; Download 6x4 Sheet (PNG)
                     </button>
 
                     <!-- Download Single Cropped Photo -->
@@ -503,7 +503,7 @@
                 <i class="ph-bold ph-table text-sm"></i> Log (Excel)
             </button>
             <button id="next-step-btn" onclick="navigateStep(1)" class="px-8 py-3 rounded-xl bg-slate-200 hover:bg-white active:bg-slate-300 text-slate-950 font-bold text-sm flex items-center gap-2 shadow-lg transition-all cursor-pointer">
-                <span>Next: Crop & Align</span>
+                <span>Next: Crop &amp; Align</span>
                 <i class="ph-bold ph-arrow-right"></i>
             </button>
         </div>
@@ -536,8 +536,8 @@
         /* ===== SETTINGS ===== */
         const KIOSK_PIN = '3467';
         const SHEET_WEBHOOK_URL = '';
-        const LOG_KEY = 'passportKioskLog';
-        const EXPORTED_KEY = 'passportKioskLogExported';
+        const LOG_KEY = 'swiftPrintKioskLog';
+        const EXPORTED_KEY = 'swiftPrintKioskLogExported';
         const IDLE_MINUTES = 10;
         const LOCK_ON_IDLE = true; // Auto-locks and requires PIN back on inactivity timeout
 
@@ -662,7 +662,7 @@
             (window.crypto || window.msCrypto).getRandomValues(bytes);
             let s = '';
             bytes.forEach(b => { s += chars[b % chars.length]; });
-            return 'SHW-' + s;
+            return 'SWIFT-' + s;
         }
 
         function startNewOrder() {
@@ -741,7 +741,7 @@
             const link = document.createElement('a');
             const nowD = new Date();
             const stamp = silent === true ? `_${p2(nowD.getHours())}${p2(nowD.getMinutes())}` : '';
-            link.download = `SilverHalide_Kiosk_Log_${todayStr(nowD)}${stamp}.csv`;
+            link.download = `SwiftPrint_Kiosk_Log_${todayStr(nowD)}${stamp}.csv`;
             try { localStorage.setItem(EXPORTED_KEY, String(log.length)); } catch (e) {}
             link.href = URL.createObjectURL(blob);
             document.body.appendChild(link);
@@ -1541,7 +1541,7 @@
 
             const link = document.createElement('a');
             const ord = getOrder();
-            link.download = `SilverHalide_Sheet_6x4_${ord.id}_${todayStr(new Date())}_${selectedPreset}.png`;
+            link.download = `SwiftPrint_Sheet_6x4_${ord.id}_${todayStr(new Date())}_${selectedPreset}.png`;
             logEvent('DOWNLOAD_SHEET');
             link.href = dataUrl;
             document.body.appendChild(link);
