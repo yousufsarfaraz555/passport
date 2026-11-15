@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Silver Halide Works - Passport Photo Kiosk</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons for Kiosk UI -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Google Font Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- HEIC / HEIF Decoder Library -->
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        kiosk: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            500: '#334155',
+                            600: '#1e293b',
+                            700: '#0f172a',
+                            900: '#020617',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Touchscreen UI Optimizations */
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        input[type=range] {
+            touch-action: pan-y;
+        }
+        
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 8px;
+        }
+
+        /* PIN lock shake animation */
+        @keyframes pinshake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+        .pin-shake { animation: pinshake 0.4s; }
+
+        /* Standard Screen Display for Print Section */
+        #print-section {
+            display: none;
+        }
+
+        /* Kiosk-Proof Chrome Print Engine Rules */
+        @media print {
+            html, body {
+                width: 6in !important;
+                height: 4in !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden !important;
+                display: block !important;
+                background: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            body > *:not(#print-section) {
+                display: none !important;
+            }
+
+            #print-section {
+                display: block !important;
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 6in !important;
+                height: 4in !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                background: #ffffff !important;
+            }
+
+            #print-section img {
+                width: 6in !important;
+                height: 4in !important;
+                display: block !important;
+                object-fit: contain !important;
+            }
+
+            @page {
+                size: 6in 4in landscape;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans h-screen w-screen overflow-hidden flex flex-col">
+
+    <!-- PIN LOCK SCREEN -->
+    <div id="pin-lock" class="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center gap-6 p-6">
+        <div class="bg-slate-800 border border-slate-700 p-4 rounded-2xl shadow-lg">
+            <i class="ph-bold ph-lock-key text-4xl text-slate-200"></i>
+        </div>
+        <div class="text-center">
+            <h2 class="text-2xl font-bold text-white">Silver Halide Works - Terminal Lock</h2>
+            <p id="pin-msg" class="text-sm text-slate-400 mt-1">Enter 4-Digit Kiosk PIN</p>
+        </div>
+        <div id="pin-dots" class="flex gap-4"></div>
+        <div id="pin-pad" class="grid grid-cols-3 gap-3"></div>
+    </div>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between shrink-0 shadow-lg">
+        <div class="flex items-center space-x-3">
+            <div class="bg-slate-800 border border-slate-700 p-2.5 rounded-xl shadow-md flex items-center justify-center">
+                <i class="ph-bold ph-aperture text-2xl text-slate-200"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-wide text-white">SILVER HALIDE WORKS</h1>
+                <p class="text-xs text-slate-400 font-medium">Passport Photo & Print Kiosk</p>
+            </div>
+        </div>
+
+        <!-- Step Badges -->
+        <div class="hidden md:flex items-center space-x-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+            <div id="step-btn-1" class="step-badge flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-800 text-white font-semibold text-sm transition-all border border-slate-700">
+                <span class="w-6 h-6 rounded-full bg-slate-700 text-xs flex items-center justify-center font-bold">1</span>
+                <span>Select Photo</span>
+            </div>
+            <i class="ph-bold ph-caret-right text-slate-700"></i>
+            <div id="step-btn-2" class="step-badge flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-900 text-slate-400 font-medium text-sm transition-all">
+                <span class="w-6 h-6 rounded-full bg-slate-800 text-xs flex items-center justify-center font-bold">2</span>
+                <span>Crop & Align</span>
+            </div>
+            <i class="ph-bold ph-caret-right text-slate-700"></i>
+            <div id="step-btn-3" class="step-badge flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-900 text-slate-400 font-medium text-sm transition-all">
+                <span class="w-6 h-6 rounded-full bg-slate-800 text-xs flex items-center justify-center font-bold">3</span>
+                <span>Adjustments</span>
+            </div>
+            <i class="ph-bold ph-caret-right text-slate-700"></i>
+            <div id="step-btn-4" class="step-badge flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-900 text-slate-400 font-medium text-sm transition-all">
+                <span class="w-6 h-6 rounded-full bg-slate-800 text-xs flex items-center justify-center font-bold">4</span>
+                <span>Print & Checkout</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <!-- Reset / Home Button -->
+            <button onclick="promptResetKiosk()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-red-950 active:bg-red-900 text-slate-200 hover:text-white font-bold text-xs md:text-sm flex items-center gap-2 border border-slate-700 transition-all cursor-pointer">
+                <i class="ph-bold ph-house-line text-lg"></i>
+                <span>Home / Reset</span>
+            </button>
+
+            <!-- Price Tag Indicator -->
+            <div class="bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl flex items-center space-x-2">
+                <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Total:</span>
+                <span id="header-price-display" class="text-xl md:text-2xl font-black text-slate-200">₹100</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Views Container -->
+    <main class="flex-1 overflow-hidden relative">
+
+        <!-- STEP 1: SOURCE SELECTION & PRICING -->
+        <section id="step-1" class="step-content absolute inset-0 p-6 flex flex-col gap-6 overflow-y-auto">
+            <!-- Pricing Option Cards -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-lg">
+                <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="ph-fill ph-tag text-slate-300 text-xl"></i>
+                    1. Select Service Type
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button onclick="setPricingMode('shop')" id="price-option-shop" class="price-card p-5 rounded-xl border-2 border-slate-300 bg-slate-800/80 flex items-center justify-between transition-all cursor-pointer shadow-md">
+                        <div class="flex items-center gap-4">
+                            <div class="p-4 rounded-xl bg-slate-700 text-white border border-slate-600">
+                                <i class="ph-bold ph-camera text-3xl"></i>
+                            </div>
+                            <div class="text-left">
+                                <h3 class="font-bold text-lg text-white">Photo Taken in Shop</h3>
+                                <p class="text-sm text-slate-400">Standard studio photo service</p>
+                            </div>
+                        </div>
+                        <span class="text-3xl font-black text-white">₹100</span>
+                    </button>
+
+                    <button onclick="setPricingMode('customer')" id="price-option-customer" class="price-card p-5 rounded-xl border-2 border-slate-800 bg-slate-900 hover:border-slate-700 flex items-center justify-between transition-all cursor-pointer">
+                        <div class="flex items-center gap-4">
+                            <div class="p-4 rounded-xl bg-slate-800 text-slate-400 border border-slate-700">
+                                <i class="ph-bold ph-folder-user text-3xl"></i>
+                            </div>
+                            <div class="text-left">
+                                <h3 class="font-bold text-lg text-white">Customer Brought Photo</h3>
+                                <p class="text-sm text-slate-400">Bring your own file (JPG, PNG, HEIC)</p>
+                            </div>
+                        </div>
+                        <span class="text-3xl font-black text-slate-300">₹50</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Directory / SD Card Scanner -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-lg flex-1 flex flex-col min-h-[350px]">
+                <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+                    <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="ph-fill ph-hard-drives text-slate-300 text-xl"></i>
+                        2. Read Photos from SD Card / Local DCIM
+                    </h2>
+                    
+                    <div class="flex items-center gap-3">
+                        <button onclick="openDirectoryPicker()" class="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 font-semibold text-white flex items-center gap-2 shadow-lg transition-all text-base cursor-pointer">
+                            <i class="ph-bold ph-folder-open text-xl"></i>
+                            Scan SD Card (DCIM)
+                        </button>
+                        
+                        <label class="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 font-semibold text-slate-200 flex items-center gap-2 cursor-pointer transition-all text-base border border-slate-700">
+                            <i class="ph-bold ph-upload-simple text-xl"></i>
+                            Browse Single Photo
+                            <input type="file" id="file-input" accept="image/*,.heic,.heif" class="hidden" onchange="handleSingleFileSelect(event)">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Gallery Grid View -->
+                <div id="gallery-container" class="flex-1 bg-slate-950 border border-slate-800/60 rounded-xl p-4 overflow-y-auto relative">
+                    <div id="gallery-empty" class="h-full flex flex-col items-center justify-center text-slate-500 gap-3 py-12">
+                        <i class="ph-duotone ph-image text-6xl text-slate-600"></i>
+                        <p class="text-base font-medium">No photos scanned yet. Tap "Scan SD Card" or browse a file (JPG, PNG, HEIC) to start.</p>
+                    </div>
+                    <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 hidden"></div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- STEP 2: CROP & ALIGNMENT -->
+        <section id="step-2" class="step-content absolute inset-0 p-6 flex flex-col md:flex-row gap-6 hidden">
+            <!-- Controls Panel -->
+            <div class="w-full md:w-80 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-5 shrink-0 shadow-lg">
+                <div>
+                    <label class="text-xs uppercase tracking-wider text-slate-400 font-bold block mb-2">Passport Standard Preset</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="setPhotoPreset('35x45')" id="preset-35x45" class="size-preset-btn p-3 rounded-xl border-2 border-slate-300 bg-slate-800 text-white font-bold text-sm flex flex-col items-center gap-1 transition-all">
+                            <span>35 x 45 mm</span>
+                            <span class="text-[10px] text-slate-300 font-normal">Standard Passport</span>
+                        </button>
+                        <button onclick="setPhotoPreset('50x50')" id="preset-50x50" class="size-preset-btn p-3 rounded-xl border-2 border-slate-800 bg-slate-950 text-slate-400 font-bold text-sm flex flex-col items-center gap-1 transition-all">
+                            <span>50 x 50 mm</span>
+                            <span class="text-[10px] text-slate-500 font-normal">2x2 Square (US / Visa)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <hr class="border-slate-800">
+
+                <!-- Positioning & Zoom Controls -->
+                <div>
+                    <label class="text-xs uppercase tracking-wider text-slate-400 font-bold block mb-2">Zoom & Navigation</label>
+                    
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="adjustZoom(-0.1)" class="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-white font-bold text-xl flex items-center justify-center shadow-md cursor-pointer">
+                            <i class="ph-bold ph-minus"></i>
+                        </button>
+                        <div class="flex-1 text-center">
+                            <input type="range" id="zoom-slider" min="0.2" max="3" step="0.05" value="1" oninput="onZoomSliderChange(this.value)" class="w-full accent-slate-300 cursor-pointer h-2 bg-slate-800 rounded-lg">
+                            <span id="zoom-level-text" class="text-xs text-slate-400 font-semibold">100%</span>
+                        </div>
+                        <button onclick="adjustZoom(0.1)" class="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-white font-bold text-xl flex items-center justify-center shadow-md cursor-pointer">
+                            <i class="ph-bold ph-plus"></i>
+                        </button>
+                    </div>
+
+                    <!-- Directional D-Pad Controls -->
+                    <div class="flex flex-col items-center gap-1">
+                        <button onclick="panImage(0, 15)" class="w-12 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-white flex items-center justify-center shadow cursor-pointer">
+                            <i class="ph-bold ph-caret-up text-xl"></i>
+                        </button>
+                        <div class="flex items-center gap-1">
+                            <button onclick="panImage(15, 0)" class="w-12 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-white flex items-center justify-center shadow cursor-pointer">
+                                <i class="ph-bold ph-caret-left text-xl"></i>
+                            </button>
+                            <button onclick="resetCropView()" class="px-3 h-10 rounded-xl bg-slate-950 border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 cursor-pointer">
+                                Reset
+                            </button>
+                            <button onclick="panImage(-15, 0)" class="w-12 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-white flex items-center justify-center shadow cursor-pointer">
+                                <i class="ph-bold ph-caret-right text-xl"></i>
+                            </button>
+                        </div>
+                        <button onclick="panImage(0, -15)" class="w-12 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-white flex items-center justify-center shadow cursor-pointer">
+                            <i class="ph-bold ph-caret-down text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-auto bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-1">
+                    <p class="font-bold text-slate-300 flex items-center gap-1">
+                        <i class="ph-bold ph-hand-swipe-left text-slate-300 text-sm"></i> Touch Features:
+                    </p>
+                    <p>• Touch drag to reposition face</p>
+                    <p>• Pinch-to-zoom supported</p>
+                    <p>• Arrow keys to pan, + / - to zoom</p>
+                </div>
+            </div>
+
+            <!-- Canvas View Box -->
+            <div class="flex-1 bg-slate-950 border border-slate-800 rounded-2xl relative overflow-hidden flex items-center justify-center shadow-inner">
+                <canvas id="crop-canvas" class="cursor-grab active:cursor-grabbing max-w-full max-h-full object-contain"></canvas>
+
+                <!-- Guideline Legend -->
+                <div class="absolute top-4 right-4 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-3 rounded-xl text-xs space-y-1.5 shadow-lg pointer-events-none">
+                    <div class="flex items-center gap-2">
+                        <div class="w-4 h-0.5 bg-red-500"></div>
+                        <span class="text-slate-300">Head Top Limit</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-4 h-0.5 bg-emerald-400"></div>
+                        <span class="text-slate-300">Eye Level Line</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-4 h-0.5 bg-amber-400"></div>
+                        <span class="text-slate-300">Chin Limit Line</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- STEP 3: ADJUSTMENTS & FILTERS -->
+        <section id="step-3" class="step-content absolute inset-0 p-6 flex flex-col md:flex-row gap-6 hidden">
+            <!-- Filter Options Panel -->
+            <div class="w-full md:w-80 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-4 shrink-0 shadow-lg overflow-y-auto">
+                <h2 class="text-base font-bold text-white flex items-center gap-2">
+                    <i class="ph-fill ph-sliders text-slate-300 text-lg"></i> Image Enhancements
+                </h2>
+
+                <!-- Black & White Toggle -->
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                    <div>
+                        <span class="text-sm font-semibold text-white block">Black & White</span>
+                        <span class="text-xs text-slate-400">Monochrome Filter</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="filter-bw" onchange="renderAdjustedCanvas()" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-600 border border-slate-700"></div>
+                    </label>
+                </div>
+
+                <!-- Brightness -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-slate-300">Brightness</span>
+                        <span id="val-brightness" class="text-slate-400">0</span>
+                    </div>
+                    <input type="range" id="filter-brightness" min="-100" max="100" value="0" oninput="onFilterChange('brightness', this.value)" class="w-full accent-slate-300 h-2 bg-slate-800 rounded-lg">
+                </div>
+
+                <!-- Contrast -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-slate-300">Contrast</span>
+                        <span id="val-contrast" class="text-slate-400">0</span>
+                    </div>
+                    <input type="range" id="filter-contrast" min="-100" max="100" value="0" oninput="onFilterChange('contrast', this.value)" class="w-full accent-slate-300 h-2 bg-slate-800 rounded-lg">
+                </div>
+
+                <!-- Saturation -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-slate-300">Saturation</span>
+                        <span id="val-saturation" class="text-slate-400">0</span>
+                    </div>
+                    <input type="range" id="filter-saturation" min="-100" max="100" value="0" oninput="onFilterChange('saturation', this.value)" class="w-full accent-slate-300 h-2 bg-slate-800 rounded-lg">
+                </div>
+
+                <!-- Sharpness -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-slate-300">Detail / Sharpness</span>
+                        <span id="val-sharpness" class="text-slate-400">0</span>
+                    </div>
+                    <input type="range" id="filter-sharpness" min="0" max="100" value="0" oninput="onFilterChange('sharpness', this.value)" class="w-full accent-slate-300 h-2 bg-slate-800 rounded-lg">
+                </div>
+
+                <button onclick="resetFilters()" class="mt-2 w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer">
+                    <i class="ph-bold ph-arrows-counter-clockwise"></i> Reset Enhancements
+                </button>
+
+                <hr class="border-slate-800 my-1">
+
+                <!-- Single Cropped Photo Download Button (Strict Passport Requirements: 630x810 JPEG, 10KB-250KB) -->
+                <button onclick="downloadSinglePhoto()" class="w-full py-3 rounded-xl bg-slate-200 hover:bg-white active:bg-slate-300 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer">
+                    <i class="ph-bold ph-download-simple text-base"></i> Download Single Photo (Portal Ready)
+                </button>
+            </div>
+
+            <!-- Preview Canvas -->
+            <div class="flex-1 bg-slate-950 border border-slate-800 rounded-2xl relative overflow-hidden flex items-center justify-center p-4 shadow-inner">
+                <canvas id="adjust-canvas" class="max-w-full max-h-full object-contain rounded border border-slate-800 shadow-2xl"></canvas>
+            </div>
+        </section>
+
+
+        <!-- STEP 4: PRINT PREVIEW & CHECKOUT -->
+        <section id="step-4" class="step-content absolute inset-0 p-6 flex flex-col md:flex-row gap-6 hidden">
+            <!-- Print Summary Sidebar -->
+            <div class="w-full md:w-80 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between shrink-0 shadow-lg gap-4 overflow-y-auto">
+                <div class="space-y-4">
+                    <h2 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="ph-fill ph-printer text-slate-300 text-lg"></i> Checkout Summary
+                    </h2>
+
+                    <div class="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-3">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Photo Standard:</span>
+                            <span id="summary-size" class="font-bold text-white">35 x 45 mm</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Yield on 6x4 Paper:</span>
+                            <span id="summary-count" class="font-bold text-slate-300">6 Photos</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Service Category:</span>
+                            <span id="summary-mode" class="font-bold text-white">Shop Photo</span>
+                        </div>
+                        <hr class="border-slate-800">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm font-bold text-slate-300">Total Payable:</span>
+                            <span id="summary-price" class="text-2xl font-black text-white">₹100</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-2.5">
+                    <!-- Main Kiosk Print Trigger -->
+                    <button id="main-print-btn" onclick="triggerKioskPrint()" class="w-full py-3.5 rounded-xl bg-slate-200 hover:bg-white active:bg-slate-300 text-slate-950 font-black text-lg flex items-center justify-center gap-3 shadow-lg transition-all cursor-pointer">
+                        <i class="ph-bold ph-printer text-2xl"></i> PRINT NOW
+                    </button>
+
+                    <!-- Download High-Res 6x4 Sheet (PNG / PDF ready) -->
+                    <button onclick="download6x4Sheet()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer">
+                        <i class="ph-bold ph-download-simple text-base"></i> Save & Download 6x4 Sheet (PNG)
+                    </button>
+
+                    <!-- Download Single Cropped Photo -->
+                    <button onclick="downloadSinglePhoto()" class="w-full py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-medium text-xs flex items-center justify-center gap-2 transition-all cursor-pointer">
+                        <i class="ph-bold ph-user-square text-base"></i> Download Portal-Ready Photo (630x810)
+                    </button>
+
+                    <button onclick="promptResetKiosk()" class="w-full py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-slate-200 font-medium text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-800">
+                        <i class="ph-bold ph-plus-circle text-base"></i> Start New Order
+                    </button>
+                </div>
+            </div>
+
+            <!-- 6x4 Print Sheet Preview Canvas -->
+            <div class="flex-1 bg-slate-950 border border-slate-800 rounded-2xl relative overflow-hidden flex flex-col items-center justify-center p-6 shadow-inner">
+                <p class="text-xs text-slate-400 font-semibold mb-3 flex items-center gap-1.5">
+                    <i class="ph-bold ph-file-text text-slate-300"></i> 6x4 Inch (4R Paper) Print Preview Grid
+                </p>
+                <div class="bg-white p-2 rounded shadow-2xl max-w-full max-h-[85%] flex items-center justify-center">
+                    <canvas id="print-sheet-canvas" class="max-w-full max-h-full object-contain"></canvas>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- DEDICATED PERMANENT PRINT SECTION FOR NATIVE CHROME KIOSK PRINTING -->
+    <div id="print-section"></div>
+
+    <!-- Navigation Footer -->
+    <footer class="bg-slate-900 border-t border-slate-800 px-6 py-4 flex items-center justify-between shrink-0 shadow-lg">
+        <button id="prev-step-btn" onclick="navigateStep(-1)" class="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 font-bold text-sm flex items-center gap-2 transition-all cursor-pointer">
+            <i class="ph-bold ph-arrow-left"></i> Previous
+        </button>
+
+        <div class="flex items-center gap-3">
+            <button onclick="downloadLogCsv()" class="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 text-[10px] font-semibold flex items-center gap-1 transition-all cursor-pointer">
+                <i class="ph-bold ph-table text-sm"></i> Log (Excel)
+            </button>
+            <button id="next-step-btn" onclick="navigateStep(1)" class="px-8 py-3 rounded-xl bg-slate-200 hover:bg-white active:bg-slate-300 text-slate-950 font-bold text-sm flex items-center gap-2 shadow-lg transition-all cursor-pointer">
+                <span>Next: Crop & Align</span>
+                <i class="ph-bold ph-arrow-right"></i>
+            </button>
+        </div>
+    </footer>
+
+    <!-- Loading Spinner Overlay for HEIC Conversion & Print Building -->
+    <div id="loading-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xs w-full p-6 text-center shadow-2xl space-y-4">
+            <div class="w-12 h-12 border-4 border-slate-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <h3 id="loading-title" class="text-base font-bold text-white">Converting Image...</h3>
+            <p id="loading-desc" class="text-xs text-slate-400">Processing high-efficiency format.</p>
+        </div>
+    </div>
+
+    <!-- Kiosk Alert Modal -->
+    <div id="alert-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl space-y-4">
+            <div id="alert-icon-wrap" class="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 text-slate-200 mx-auto flex items-center justify-center text-3xl">
+                <i id="alert-icon" class="ph-bold ph-info"></i>
+            </div>
+            <h3 id="alert-title" class="text-lg font-bold text-white">Notice</h3>
+            <p id="alert-msg" class="text-sm text-slate-300">Message text here.</p>
+            <div id="alert-actions" class="flex gap-3 justify-center pt-2">
+                <button onclick="closeModal()" class="w-full py-3 rounded-xl bg-slate-200 hover:bg-white text-slate-950 font-bold text-sm transition-all">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ===== SETTINGS ===== */
+        const KIOSK_PIN = '3467';
+        const SHEET_WEBHOOK_URL = '';
+        const LOG_KEY = 'passportKioskLog';
+        const EXPORTED_KEY = 'passportKioskLogExported';
+        const IDLE_MINUTES = 10;
+        const LOCK_ON_IDLE = false;
+
+        /* Application State */
+        let currentOrder = null;
+        let currentStep = 1;
+        let pricingMode = 'shop'; // 'shop' (₹100) or 'customer' (₹50)
+        let selectedPreset = '35x45'; // '35x45' or '50x50'
+        
+        let rawImageObj = null;
+        
+        // Transform State for Cropping
+        let scale = 1;
+        let panX = 0;
+        let panY = 0;
+        
+        // Touch Drag State
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        let initialPinchDistance = null;
+
+        // Image Adjustments
+        let filters = {
+            brightness: 0,
+            contrast: 0,
+            saturation: 0,
+            sharpness: 0,
+            isBW: false
+        };
+
+        // Canvas References
+        let cropCanvas, cropCtx;
+        let adjustCanvas, adjustCtx;
+        let printCanvas, printCtx;
+
+        window.onload = function() {
+            cropCanvas = document.getElementById('crop-canvas');
+            cropCtx = cropCanvas.getContext('2d');
+
+            adjustCanvas = document.getElementById('adjust-canvas');
+            adjustCtx = adjustCanvas.getContext('2d');
+
+            printCanvas = document.getElementById('print-sheet-canvas');
+            printCtx = printCanvas.getContext('2d');
+
+            setupTouchAndMouseEvents();
+            setupKeyboardNavigation();
+            updatePricingUI();
+            updateStepView();
+        };
+
+        /* ===== PIN LOCK ===== */
+        let pinBuffer = '';
+
+        function buildPinPad() {
+            const pad = document.getElementById('pin-pad');
+            const keys = ['1','2','3','4','5','6','7','8','9','C','0','<'];
+            pad.innerHTML = '';
+            keys.forEach(k => {
+                const b = document.createElement('button');
+                b.className = 'w-20 h-20 rounded-2xl bg-slate-900 hover:bg-slate-800 active:bg-slate-700 border border-slate-800 text-white text-2xl font-bold flex items-center justify-center transition-all cursor-pointer';
+                if (k === 'C') { b.innerHTML = '<span class="text-sm text-slate-400">Clear</span>'; b.onclick = () => { pinBuffer = ''; renderPinDots(); }; }
+                else if (k === '<') { b.innerHTML = '<i class="ph-bold ph-backspace text-2xl"></i>'; b.onclick = () => { pinBuffer = pinBuffer.slice(0, -1); renderPinDots(); }; }
+                else { b.innerText = k; b.onclick = () => pinPress(k); }
+                pad.appendChild(b);
+            });
+        }
+
+        function renderPinDots() {
+            const wrap = document.getElementById('pin-dots');
+            let html = '';
+            for (let i = 0; i < 4; i++) {
+                html += `<span class="w-5 h-5 rounded-full border-2 ${i < pinBuffer.length ? 'bg-slate-200 border-slate-200' : 'border-slate-700'}"></span>`;
+            }
+            wrap.innerHTML = html;
+        }
+
+        function pinPress(d) {
+            if (pinBuffer.length >= 4) return;
+            pinBuffer += d;
+            renderPinDots();
+            if (pinBuffer.length === 4) setTimeout(checkPin, 150);
+        }
+
+        function checkPin() {
+            const msg = document.getElementById('pin-msg');
+            if (pinBuffer === KIOSK_PIN) {
+                document.getElementById('pin-lock').classList.add('hidden');
+                autoBackupCsv();
+                resetIdleTimer();
+                msg.innerText = 'Enter 4-Digit Kiosk PIN';
+                msg.className = 'text-sm text-slate-400 mt-1';
+            } else {
+                msg.innerText = 'Wrong PIN. Try again.';
+                msg.className = 'text-sm text-red-400 mt-1 font-semibold';
+                const dots = document.getElementById('pin-dots');
+                dots.classList.add('pin-shake');
+                setTimeout(() => dots.classList.remove('pin-shake'), 400);
+            }
+            pinBuffer = '';
+            renderPinDots();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (document.getElementById('pin-lock').classList.contains('hidden')) return;
+            if (/^[0-9]$/.test(e.key)) pinPress(e.key);
+            else if (e.key === 'Backspace') { pinBuffer = pinBuffer.slice(0, -1); renderPinDots(); }
+        });
+
+        buildPinPad();
+        renderPinDots();
+
+        /* ===== ORDER ID + PRINT / DOWNLOAD LOG ===== */
+        function p2(n) { return String(n).padStart(2, '0'); }
+        function todayStr(d) { return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; }
+        function timeStr(d) { return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`; }
+
+        function generateOrderId() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            const bytes = new Uint8Array(6);
+            (window.crypto || window.msCrypto).getRandomValues(bytes);
+            let s = '';
+            bytes.forEach(b => { s += chars[b % chars.length]; });
+            return 'SHW-' + s;
+        }
+
+        function startNewOrder() {
+            const now = new Date();
+            currentOrder = { id: generateOrderId(), date: todayStr(now), time: timeStr(now) };
+        }
+
+        function getOrder() {
+            if (!currentOrder) startNewOrder();
+            return currentOrder;
+        }
+
+        function readLog() {
+            try { return JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (e) { return []; }
+        }
+
+        function writeLog(arr) {
+            try { localStorage.setItem(LOG_KEY, JSON.stringify(arr)); } catch (e) { console.warn('Log save failed', e); }
+        }
+
+        function logEvent(action) {
+            const o = getOrder();
+            const now = new Date();
+            const entry = {
+                orderId: o.id,
+                date: todayStr(now),
+                time: timeStr(now),
+                action: action,
+                service: pricingMode === 'shop' ? 'Photo Taken in Shop' : 'Customer Brought Photo',
+                price: pricingMode === 'shop' ? 100 : 50,
+                photoSize: selectedPreset === '35x45' ? '35x45 mm' : '50x50 mm',
+                photosOnSheet: selectedPreset === '35x45' ? 6 : 2,
+                synced: false
+            };
+            const log = readLog();
+            log.push(entry);
+            writeLog(log);
+            syncLog();
+        }
+
+        let syncing = false;
+        async function syncLog() {
+            if (!SHEET_WEBHOOK_URL || syncing) return;
+            syncing = true;
+            try {
+                const log = readLog();
+                for (const entry of log) {
+                    if (entry.synced) continue;
+                    const { synced, ...payload } = entry;
+                    await fetch(SHEET_WEBHOOK_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify(payload)
+                    });
+                    entry.synced = true;
+                }
+                writeLog(log);
+            } catch (e) {
+                console.warn('Sheet sync failed, will retry on next print', e);
+            }
+            syncing = false;
+        }
+
+        function downloadLogCsv(silent) {
+            const log = readLog();
+            if (!log.length) {
+                if (silent !== true) showAlert('Log Empty', 'No prints or downloads have been logged yet.', 'ph-table');
+                return;
+            }
+            const cols = ['orderId', 'date', 'time', 'action', 'service', 'price', 'photoSize', 'photosOnSheet'];
+            const head = ['Order ID', 'Date', 'Time', 'Action', 'Service', 'Price (INR)', 'Photo Size', 'Photos On Sheet'];
+            const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+            const rows = [head.map(esc).join(',')].concat(log.map(e => cols.map(c => esc(e[c])).join(',')));
+            const blob = new Blob(['\uFEFF' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+            const link = document.createElement('a');
+            const nowD = new Date();
+            const stamp = silent === true ? `_${p2(nowD.getHours())}${p2(nowD.getMinutes())}` : '';
+            link.download = `SilverHalide_Kiosk_Log_${todayStr(nowD)}${stamp}.csv`;
+            try { localStorage.setItem(EXPORTED_KEY, String(log.length)); } catch (e) {}
+            link.href = URL.createObjectURL(blob);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function autoBackupCsv() {
+            const log = readLog();
+            let exported = 0;
+            try { exported = parseInt(localStorage.getItem(EXPORTED_KEY) || '0', 10) || 0; } catch (e) {}
+            if (log.length > exported) downloadLogCsv(true);
+        }
+
+        function lockKiosk() {
+            pinBuffer = '';
+            renderPinDots();
+            document.getElementById('pin-lock').classList.remove('hidden');
+        }
+
+        let idleTimer = null;
+        function resetIdleTimer() {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(onIdleTimeout, IDLE_MINUTES * 60 * 1000);
+        }
+
+        function onIdleTimeout() {
+            const locked = !document.getElementById('pin-lock').classList.contains('hidden');
+            const loading = !document.getElementById('loading-modal').classList.contains('hidden');
+            if (locked || loading) { resetIdleTimer(); return; }
+            autoBackupCsv();
+            executeKioskReset();
+            if (LOCK_ON_IDLE) lockKiosk();
+            resetIdleTimer();
+        }
+
+        ['pointerdown', 'touchstart', 'mousemove', 'keydown', 'wheel'].forEach(ev => {
+            window.addEventListener(ev, resetIdleTimer, { passive: true });
+        });
+
+        function showAlert(title, msg, icon = 'ph-info') {
+            document.getElementById('alert-title').innerText = title;
+            document.getElementById('alert-msg').innerText = msg;
+            document.getElementById('alert-icon').className = `ph-bold ${icon}`;
+            document.getElementById('alert-actions').innerHTML = `
+                <button onclick="closeModal()" class="w-full py-3 rounded-xl bg-slate-200 hover:bg-white text-slate-950 font-bold text-sm transition-all">OK</button>
+            `;
+            document.getElementById('alert-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('alert-modal').classList.add('hidden');
+        }
+
+        function showLoading(show, title = "Converting Image...", desc = "Processing high-efficiency format.") {
+            const modal = document.getElementById('loading-modal');
+            document.getElementById('loading-title').innerText = title;
+            document.getElementById('loading-desc').innerText = desc;
+            if (show) modal.classList.remove('hidden');
+            else modal.classList.add('hidden');
+        }
+
+        function promptResetKiosk() {
+            if (!rawImageObj && currentStep === 1) {
+                executeKioskReset();
+                return;
+            }
+
+            document.getElementById('alert-title').innerText = "Reset Photo Kiosk?";
+            document.getElementById('alert-msg').innerText = "Start a new session? All unprinted photos and adjustments will be cleared.";
+            document.getElementById('alert-icon').className = "ph-bold ph-warning-circle text-slate-300";
+            document.getElementById('alert-icon-wrap').className = "w-14 h-14 rounded-full bg-slate-800 border border-slate-700 text-slate-200 mx-auto flex items-center justify-center text-3xl";
+
+            document.getElementById('alert-actions').innerHTML = `
+                <button onclick="closeModal()" class="w-1/2 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm transition-all border border-slate-700">Cancel</button>
+                <button onclick="executeKioskReset()" class="w-1/2 py-3 rounded-xl bg-red-950 hover:bg-red-900 border border-red-800 text-red-200 font-bold text-sm transition-all">Reset Kiosk</button>
+            `;
+            document.getElementById('alert-modal').classList.remove('hidden');
+        }
+
+        function executeKioskReset() {
+            closeModal();
+            rawImageObj = null;
+            currentOrder = null;
+            pricingMode = 'shop';
+            selectedPreset = '35x45';
+
+            document.getElementById('file-input').value = "";
+            const grid = document.getElementById('gallery-grid');
+            grid.innerHTML = '';
+            grid.classList.add('hidden');
+            document.getElementById('gallery-empty').classList.remove('hidden');
+
+            resetFilters();
+
+            scale = 1;
+            panX = 0;
+            panY = 0;
+
+            if (cropCtx) cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+            if (adjustCtx) adjustCtx.clearRect(0, 0, adjustCanvas.width, adjustCanvas.height);
+            if (printCtx) printCtx.clearRect(0, 0, printCanvas.width, printCanvas.height);
+
+            const printSection = document.getElementById('print-section');
+            if (printSection) printSection.innerHTML = '';
+
+            currentStep = 1;
+            updatePricingUI();
+            updateStepView();
+        }
+
+        function updateStepView() {
+            document.querySelectorAll('.step-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`step-${currentStep}`).classList.remove('hidden');
+
+            for (let i = 1; i <= 4; i++) {
+                const badge = document.getElementById(`step-btn-${i}`);
+                if (i === currentStep) {
+                    badge.className = "step-badge flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-800 text-white font-semibold text-sm transition-all shadow-md border border-slate-700";
+                } else if (i < currentStep) {
+                    badge.className = "step-badge flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-900 text-slate-300 border border-slate-700 font-medium text-sm transition-all";
+                } else {
+                    badge.className = "step-badge flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-900 text-slate-500 font-medium text-sm transition-all border border-slate-800";
+                }
+            }
+
+            const prevBtn = document.getElementById('prev-step-btn');
+            const nextBtn = document.getElementById('next-step-btn');
+
+            if (currentStep === 1) {
+                prevBtn.classList.add('opacity-50', 'pointer-events-none');
+            } else {
+                prevBtn.classList.remove('opacity-50', 'pointer-events-none');
+            }
+
+            if (currentStep === 4) {
+                nextBtn.classList.add('hidden');
+            } else {
+                nextBtn.classList.remove('hidden');
+                const labels = {
+                    1: "Next: Crop & Align",
+                    2: "Next: Adjustments",
+                    3: "Next: Print & Checkout"
+                };
+                nextBtn.querySelector('span').innerText = labels[currentStep];
+            }
+
+            if (currentStep === 2 && rawImageObj) {
+                renderCropCanvas();
+            } else if (currentStep === 3) {
+                renderAdjustedCanvas();
+            } else if (currentStep === 4) {
+                generate6x4PrintSheet();
+            }
+        }
+
+        function navigateStep(direction) {
+            if (direction === 1) {
+                if (currentStep === 1 && !rawImageObj) {
+                    showAlert('Select Photo', 'Please scan or choose a photo from the SD card to proceed.', 'ph-image');
+                    return;
+                }
+                if (currentStep < 4) currentStep++;
+            } else if (direction === -1) {
+                if (currentStep > 1) currentStep--;
+            }
+            updateStepView();
+        }
+
+        function setPricingMode(mode) {
+            pricingMode = mode;
+            updatePricingUI();
+        }
+
+        function updatePricingUI() {
+            const shopCard = document.getElementById('price-option-shop');
+            const customerCard = document.getElementById('price-option-customer');
+            const priceDisplay = document.getElementById('header-price-display');
+            const summaryPrice = document.getElementById('summary-price');
+            const summaryMode = document.getElementById('summary-mode');
+
+            if (pricingMode === 'shop') {
+                shopCard.className = "price-card p-5 rounded-xl border-2 border-slate-300 bg-slate-800/80 flex items-center justify-between transition-all cursor-pointer shadow-md";
+                customerCard.className = "price-card p-5 rounded-xl border-2 border-slate-800 bg-slate-900 hover:border-slate-700 flex items-center justify-between transition-all cursor-pointer";
+                priceDisplay.innerText = "₹100";
+                if (summaryPrice) summaryPrice.innerText = "₹100";
+                if (summaryMode) summaryMode.innerText = "Photo Taken in Shop";
+            } else {
+                customerCard.className = "price-card p-5 rounded-xl border-2 border-slate-300 bg-slate-800/80 flex items-center justify-between transition-all cursor-pointer shadow-md";
+                shopCard.className = "price-card p-5 rounded-xl border-2 border-slate-800 bg-slate-900 hover:border-slate-700 flex items-center justify-between transition-all cursor-pointer";
+                priceDisplay.innerText = "₹50";
+                if (summaryPrice) summaryPrice.innerText = "₹50";
+                if (summaryMode) summaryMode.innerText = "Customer Brought Photo";
+            }
+        }
+
+        function isHeicFile(fileOrName) {
+            const name = typeof fileOrName === 'string' ? fileOrName : fileOrName.name;
+            return name.match(/\.(heic|heif)$/i);
+        }
+
+        async function processFileToBlob(file) {
+            if (isHeicFile(file)) {
+                showLoading(true, "Converting HEIC Image...", "Processing high-efficiency photo for editing.");
+                try {
+                    const convertedBlob = await heic2any({
+                        blob: file,
+                        toType: "image/jpeg",
+                        quality: 0.92
+                    });
+                    showLoading(false);
+                    return Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+                } catch (err) {
+                    showLoading(false);
+                    console.error("HEIC conversion failed:", err);
+                    showAlert("HEIC Error", "Failed to convert HEIC image. Please try standard JPG or PNG.", "ph-warning");
+                    throw err;
+                }
+            }
+            return file;
+        }
+
+        async function openDirectoryPicker() {
+            try {
+                if ('showDirectoryPicker' in window) {
+                    const dirHandle = await window.showDirectoryPicker();
+                    const images = [];
+
+                    for await (const entry of dirHandle.values()) {
+                        if (entry.kind === 'file' && entry.name.match(/\.(jpg|jpeg|png|webp|heic|heif)$/i)) {
+                            const file = await entry.getFile();
+                            images.push(file);
+                        } else if (entry.kind === 'directory') {
+                            for await (const subEntry of entry.values()) {
+                                if (subEntry.kind === 'file' && subEntry.name.match(/\.(jpg|jpeg|png|webp|heic|heif)$/i)) {
+                                    const file = await subEntry.getFile();
+                                    images.push(file);
+                                }
+                            }
+                        }
+                    }
+
+                    if (images.length > 0) {
+                        displayGalleryThumbnails(images);
+                    } else {
+                        showAlert('No Photos Found', 'No valid JPEG, PNG, or HEIC images were found in the scanned folder.', 'ph-warning');
+                    }
+                } else {
+                    showAlert('Browser Limit', 'Directory Access API is not enabled on this browser. Use single file selection.', 'ph-info');
+                }
+            } catch (err) {
+                console.warn('Scan cancelled or error:', err);
+            }
+        }
+
+        async function handleSingleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                await loadImageFromFile(file);
+            }
+        }
+
+        function displayGalleryThumbnails(fileList) {
+            const grid = document.getElementById('gallery-grid');
+            const emptyMsg = document.getElementById('gallery-empty');
+            grid.innerHTML = '';
+
+            emptyMsg.classList.add('hidden');
+            grid.classList.remove('hidden');
+
+            fileList.forEach((file) => {
+                const card = document.createElement('div');
+                card.className = "group relative aspect-square bg-slate-900 rounded-xl overflow-hidden border-2 border-slate-800 hover:border-slate-300 cursor-pointer transition-all shadow-md flex items-center justify-center";
+                
+                if (isHeicFile(file)) {
+                    card.innerHTML = `
+                        <div class="flex flex-col items-center gap-1 text-slate-400 p-2 text-center">
+                            <i class="ph-bold ph-file-image text-3xl text-slate-300"></i>
+                            <span class="text-[10px] font-bold truncate max-w-full">${file.name}</span>
+                            <span class="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">HEIC</span>
+                        </div>
+                    `;
+                } else {
+                    const url = URL.createObjectURL(file);
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.className = "w-full h-full object-cover group-hover:scale-105 transition-transform duration-300";
+                    card.appendChild(img);
+                }
+
+                const overlay = document.createElement('div');
+                overlay.className = "absolute inset-0 bg-slate-800/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity";
+                overlay.innerHTML = `<span class="bg-slate-200 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-lg shadow">Select</span>`;
+                card.appendChild(overlay);
+
+                card.onclick = async () => {
+                    document.querySelectorAll('#gallery-grid > div').forEach(c => c.classList.remove('border-slate-300', 'ring-4', 'ring-slate-700'));
+                    card.classList.add('border-slate-300', 'ring-4', 'ring-slate-700');
+
+                    await loadImageFromFile(file);
+                };
+
+                grid.appendChild(card);
+            });
+        }
+
+        async function loadImageFromFile(file) {
+            try {
+                const blob = await processFileToBlob(file);
+                const url = URL.createObjectURL(blob);
+                loadImageFromUrl(url);
+            } catch (e) {
+                console.error("Failed to load image file", e);
+            }
+        }
+
+        function loadImageFromUrl(url) {
+            const img = new Image();
+            img.onload = function() {
+                rawImageObj = img;
+                startNewOrder();
+                resetCropView();
+                currentStep = 2;
+                updateStepView();
+            };
+            img.src = url;
+        }
+
+        function setPhotoPreset(preset) {
+            selectedPreset = preset;
+            document.getElementById('preset-35x45').className = preset === '35x45' ? 
+                "size-preset-btn p-3 rounded-xl border-2 border-slate-300 bg-slate-800 text-white font-bold text-sm flex flex-col items-center gap-1 transition-all" : 
+                "size-preset-btn p-3 rounded-xl border-2 border-slate-800 bg-slate-950 text-slate-400 font-bold text-sm flex flex-col items-center gap-1 transition-all";
+
+            document.getElementById('preset-50x50').className = preset === '50x50' ? 
+                "size-preset-btn p-3 rounded-xl border-2 border-slate-300 bg-slate-800 text-white font-bold text-sm flex flex-col items-center gap-1 transition-all" : 
+                "size-preset-btn p-3 rounded-xl border-2 border-slate-800 bg-slate-950 text-slate-400 font-bold text-sm flex flex-col items-center gap-1 transition-all";
+
+            if (rawImageObj) renderCropCanvas();
+        }
+
+        function resetCropView() {
+            if (!rawImageObj) return;
+            scale = 1;
+            panX = 0;
+            panY = 0;
+            document.getElementById('zoom-slider').value = 1;
+            document.getElementById('zoom-level-text').innerText = '100%';
+            renderCropCanvas();
+        }
+
+        function adjustZoom(delta) {
+            scale = Math.max(0.2, Math.min(3, scale + delta));
+            document.getElementById('zoom-slider').value = scale;
+            document.getElementById('zoom-level-text').innerText = `${Math.round(scale * 100)}%`;
+            renderCropCanvas();
+        }
+
+        function onZoomSliderChange(val) {
+            scale = parseFloat(val);
+            document.getElementById('zoom-level-text').innerText = `${Math.round(scale * 100)}%`;
+            renderCropCanvas();
+        }
+
+        function panImage(dx, dy) {
+            panX += dx;
+            panY += dy;
+            renderCropCanvas();
+        }
+
+        function renderCropCanvas() {
+            if (!rawImageObj || !cropCanvas) return;
+
+            const targetAspect = selectedPreset === '35x45' ? (35 / 45) : 1;
+            
+            const containerHeight = cropCanvas.parentElement.clientHeight - 40;
+            const canvasHeight = Math.min(600, containerHeight);
+            const canvasWidth = canvasHeight * targetAspect;
+
+            cropCanvas.width = canvasWidth;
+            cropCanvas.height = canvasHeight;
+
+            cropCtx.fillStyle = '#020617';
+            cropCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            cropCtx.save();
+            cropCtx.translate(canvasWidth / 2 + panX, canvasHeight / 2 + panY);
+            cropCtx.scale(scale, scale);
+
+            const imgAspect = rawImageObj.width / rawImageObj.height;
+            let drawW, drawH;
+            if (imgAspect > targetAspect) {
+                drawH = canvasHeight;
+                drawW = canvasHeight * imgAspect;
+            } else {
+                drawW = canvasWidth;
+                drawH = canvasWidth / imgAspect;
+            }
+
+            cropCtx.drawImage(rawImageObj, -drawW / 2, -drawH / 2, drawW, drawH);
+            cropCtx.restore();
+
+            drawPassportGuidelines(cropCtx, canvasWidth, canvasHeight);
+        }
+
+        function drawPassportGuidelines(ctx, w, h) {
+            ctx.save();
+            ctx.lineWidth = 2;
+
+            // Head Top
+            const headY = h * 0.15;
+            ctx.strokeStyle = '#ef4444';
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(0, headY);
+            ctx.lineTo(w, headY);
+            ctx.stroke();
+
+            // Eye Level
+            const eyeY = h * 0.42;
+            ctx.strokeStyle = '#34d399';
+            ctx.setLineDash([8, 4]);
+            ctx.beginPath();
+            ctx.moveTo(0, eyeY);
+            ctx.lineTo(w, eyeY);
+            ctx.stroke();
+
+            // Center Line
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(w / 2, 0);
+            ctx.lineTo(w / 2, h);
+            ctx.stroke();
+
+            // Chin Limit
+            const chinY = h * 0.75;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(0, chinY);
+            ctx.lineTo(w, chinY);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function setupTouchAndMouseEvents() {
+            const canvas = document.getElementById('crop-canvas');
+
+            canvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                startX = e.clientX - panX;
+                startY = e.clientY - panY;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                panX = e.clientX - startX;
+                panY = e.clientY - startY;
+                renderCropCanvas();
+            });
+
+            window.addEventListener('mouseup', () => { isDragging = false; });
+
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDragging = true;
+                    startX = e.touches[0].clientX - panX;
+                    startY = e.touches[0].clientY - panY;
+                } else if (e.touches.length === 2) {
+                    isDragging = false;
+                    initialPinchDistance = getTouchDistance(e.touches);
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (isDragging && e.touches.length === 1) {
+                    panX = e.touches[0].clientX - startX;
+                    panY = e.touches[0].clientY - startY;
+                    renderCropCanvas();
+                } else if (e.touches.length === 2 && initialPinchDistance) {
+                    const newDist = getTouchDistance(e.touches);
+                    const diff = newDist - initialPinchDistance;
+                    if (Math.abs(diff) > 5) {
+                        adjustZoom(diff > 0 ? 0.03 : -0.03);
+                        initialPinchDistance = newDist;
+                    }
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchend', () => {
+                isDragging = false;
+                initialPinchDistance = null;
+            });
+        }
+
+        function getTouchDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function setupKeyboardNavigation() {
+            window.addEventListener('keydown', (e) => {
+                if (currentStep !== 2) return;
+                switch (e.key) {
+                    case 'ArrowUp': panImage(0, 10); break;
+                    case 'ArrowDown': panImage(0, -10); break;
+                    case 'ArrowLeft': panImage(10, 0); break;
+                    case 'ArrowRight': panImage(-10, 0); break;
+                    case '+': case '=': adjustZoom(0.05); break;
+                    case '-': case '_': adjustZoom(-0.05); break;
+                }
+            });
+        }
+
+        function onFilterChange(type, value) {
+            filters[type] = parseInt(value);
+            document.getElementById(`val-${type}`).innerText = value;
+            renderAdjustedCanvas();
+        }
+
+        function resetFilters() {
+            filters = { brightness: 0, contrast: 0, saturation: 0, sharpness: 0, isBW: false };
+            
+            const bEl = document.getElementById('filter-brightness');
+            const cEl = document.getElementById('filter-contrast');
+            const sEl = document.getElementById('filter-saturation');
+            const shEl = document.getElementById('filter-sharpness');
+            const bwEl = document.getElementById('filter-bw');
+
+            if (bEl) bEl.value = 0;
+            if (cEl) cEl.value = 0;
+            if (sEl) sEl.value = 0;
+            if (shEl) shEl.value = 0;
+            if (bwEl) bwEl.checked = false;
+
+            if (document.getElementById('val-brightness')) document.getElementById('val-brightness').innerText = 0;
+            if (document.getElementById('val-contrast')) document.getElementById('val-contrast').innerText = 0;
+            if (document.getElementById('val-saturation')) document.getElementById('val-saturation').innerText = 0;
+            if (document.getElementById('val-sharpness')) document.getElementById('val-sharpness').innerText = 0;
+
+            if (adjustCtx) renderAdjustedCanvas();
+        }
+
+        function renderAdjustedCanvas() {
+            if (!rawImageObj || !adjustCanvas) return;
+
+            const targetAspect = selectedPreset === '35x45' ? (35 / 45) : 1;
+            const outputW = 600;
+            const outputH = outputW / targetAspect;
+
+            adjustCanvas.width = outputW;
+            adjustCanvas.height = outputH;
+
+            adjustCtx.save();
+            adjustCtx.fillStyle = '#ffffff';
+            adjustCtx.fillRect(0, 0, outputW, outputH);
+
+            const displayCanvasW = cropCanvas.width;
+            const displayCanvasH = cropCanvas.height;
+            const scaleRatio = outputW / displayCanvasW;
+
+            adjustCtx.translate(outputW / 2 + panX * scaleRatio, outputH / 2 + panY * scaleRatio);
+            adjustCtx.scale(scale * scaleRatio, scale * scaleRatio);
+
+            const imgAspect = rawImageObj.width / rawImageObj.height;
+            let drawW, drawH;
+            if (imgAspect > targetAspect) {
+                drawH = displayCanvasH;
+                drawW = displayCanvasH * imgAspect;
+            } else {
+                drawW = displayCanvasW;
+                drawH = displayCanvasW / imgAspect;
+            }
+
+            adjustCtx.drawImage(rawImageObj, -drawW / 2, -drawH / 2, drawW, drawH);
+            adjustCtx.restore();
+
+            const bw = document.getElementById('filter-bw').checked;
+            filters.isBW = bw;
+
+            const imgData = adjustCtx.getImageData(0, 0, outputW, outputH);
+            const data = imgData.data;
+
+            const bVal = filters.brightness * 2.55;
+            const cFactor = (259 * (filters.contrast + 255)) / (255 * (259 - filters.contrast));
+            const sVal = (filters.saturation + 100) / 100;
+
+            for (let i = 0; i < data.length; i += 4) {
+                let r = data[i];
+                let g = data[i + 1];
+                let b = data[i + 2];
+
+                r += bVal;
+                g += bVal;
+                b += bVal;
+
+                r = cFactor * (r - 128) + 128;
+                g = cFactor * (g - 128) + 128;
+                b = cFactor * (b - 128) + 128;
+
+                const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
+                r = gray + sVal * (r - gray);
+                g = gray + sVal * (g - gray);
+                b = gray + sVal * (b - gray);
+
+                if (bw) {
+                    const mono = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                    r = g = b = mono;
+                }
+
+                data[i]     = Math.min(255, Math.max(0, r));
+                data[i + 1] = Math.min(255, Math.max(0, g));
+                data[i + 2] = Math.min(255, Math.max(0, b));
+            }
+
+            adjustCtx.putImageData(imgData, 0, 0);
+
+            if (filters.sharpness > 0) {
+                applySharpenFilter(adjustCtx, outputW, outputH, filters.sharpness / 100);
+            }
+        }
+
+        function applySharpenFilter(ctx, width, height, mix) {
+            const weights = [
+                0, -1, 0,
+                -1, 5, -1,
+                0, -1, 0
+            ];
+            const srcData = ctx.getImageData(0, 0, width, height);
+            const src = srcData.data;
+            const output = ctx.createImageData(width, height);
+            const dst = output.data;
+
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const dstOff = (y * width + x) * 4;
+                    let r = 0, g = 0, b = 0;
+
+                    for (let cy = -1; cy <= 1; cy++) {
+                        for (let cx = -1; cx <= 1; cx++) {
+                            const scx = x + cx;
+                            const scy = y + cy;
+                            const srcOff = (scy * width + scx) * 4;
+                            const wt = weights[(cy + 1) * 3 + (cx + 1)];
+
+                            r += src[srcOff] * wt;
+                            g += src[srcOff + 1] * wt;
+                            b += src[srcOff + 2] * wt;
+                        }
+                    }
+
+                    const origR = src[dstOff];
+                    const origG = src[dstOff + 1];
+                    const origB = src[dstOff + 2];
+
+                    dst[dstOff]     = origR + (r - origR) * mix;
+                    dst[dstOff + 1] = origG + (g - origG) * mix;
+                    dst[dstOff + 2] = origB + (b - origB) * mix;
+                    dst[dstOff + 3] = src[dstOff + 3];
+                }
+            }
+            ctx.putImageData(output, 0, 0);
+        }
+
+        /* Download Single Cropped Photo strictly complying with Passport Seva Portal specifications:
+           - Exact pixel dimensions: 630x810
+           - File format: JPEG (.jpg)
+           - File size constraint: 10 KB to 250 KB
+        */
+        function downloadSinglePhoto() {
+            if (!adjustCanvas) return;
+
+            // Create offscreen canvas locked to 630x810 pixels
+            const portalCanvas = document.createElement('canvas');
+            portalCanvas.width = 630;
+            portalCanvas.height = 810;
+            const pCtx = portalCanvas.getContext('2d');
+            pCtx.fillStyle = '#ffffff';
+            pCtx.fillRect(0, 0, 630, 810);
+            pCtx.drawImage(adjustCanvas, 0, 0, 630, 810);
+
+            // Compress iteratively to ensure output JPEG size is strictly between 10 KB and 250 KB
+            let quality = 0.92;
+            let dataUrl = portalCanvas.toDataURL('image/jpeg', quality);
+            
+            // Check byte size approximation from base64 string length
+            let base64Length = dataUrl.length - (dataUrl.indexOf(',') + 1);
+            let sizeInBytes = (base64Length * 3) / 4;
+
+            while (sizeInBytes > 250 * 1024 && quality > 0.3) {
+                quality -= 0.1;
+                dataUrl = portalCanvas.toDataURL('image/jpeg', quality);
+                base64Length = dataUrl.length - (dataUrl.indexOf(',') + 1);
+                sizeInBytes = (base64Length * 3) / 4;
+            }
+
+            const link = document.createElement('a');
+            const ord = getOrder();
+            link.download = `Passport_630x810_${ord.id}_${todayStr(new Date())}.jpg`;
+            logEvent('DOWNLOAD_SINGLE_PORTAL_READY');
+            link.href = dataUrl;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function generate6x4PrintSheet() {
+            if (!adjustCanvas || !printCanvas) return null;
+
+            const sheetW = 1800; // 6 inches @ 300 DPI
+            const sheetH = 1200; // 4 inches @ 300 DPI
+
+            printCanvas.width = sheetW;
+            printCanvas.height = sheetH;
+
+            printCtx.fillStyle = '#ffffff';
+            printCtx.fillRect(0, 0, sheetW, sheetH);
+
+            if (selectedPreset === '35x45') {
+                const photoW = 413;
+                const photoH = 531;
+
+                const cols = 3;
+                const rows = 2;
+
+                const totalPhotosWidth = cols * photoW;
+                const gapX = (sheetW - totalPhotosWidth) / (cols + 1);
+
+                const totalPhotosHeight = rows * photoH;
+                const gapY = (sheetH - totalPhotosHeight) / (rows + 1);
+
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const x = Math.round(gapX + c * (photoW + gapX));
+                        const y = Math.round(gapY + r * (photoH + gapY));
+
+                        printCtx.drawImage(adjustCanvas, x, y, photoW, photoH);
+                        drawCuttingMarks(printCtx, x, y, photoW, photoH);
+                    }
+                }
+
+                document.getElementById('summary-size').innerText = "35 x 45 mm";
+                document.getElementById('summary-count').innerText = "6 Photos (3x2 Grid)";
+            } else {
+                const photoW = 560;
+                const photoH = 560;
+
+                const cols = 2;
+                const gapX = (sheetW - (cols * photoW)) / (cols + 1);
+                const y = Math.round((sheetH - photoH) / 2);
+
+                for (let c = 0; c < cols; c++) {
+                    const x = Math.round(gapX + c * (photoW + gapX));
+
+                    printCtx.drawImage(adjustCanvas, x, y, photoW, photoH);
+                    drawCuttingMarks(printCtx, x, y, photoW, photoH);
+                }
+
+                document.getElementById('summary-size').innerText = "50 x 50 mm (2x2 Inches)";
+                document.getElementById('summary-count').innerText = "2 Photos (Side-by-Side)";
+            }
+
+            return printCanvas.toDataURL('image/jpeg', 1.0);
+        }
+
+        function drawCuttingMarks(ctx, x, y, w, h) {
+            ctx.save();
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([8, 6]);
+
+            ctx.strokeRect(x, y, w, h);
+
+            const tickLen = 22;
+            ctx.strokeStyle = '#475569';
+            ctx.setLineDash([]);
+            ctx.lineWidth = 1.5;
+
+            // Top-Left
+            ctx.beginPath(); ctx.moveTo(x - tickLen, y); ctx.lineTo(x, y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, y - tickLen); ctx.lineTo(x, y); ctx.stroke();
+
+            // Top-Right
+            ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w + tickLen, y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + w, y - tickLen); ctx.lineTo(x + w, y); ctx.stroke();
+
+            // Bottom-Left
+            ctx.beginPath(); ctx.moveTo(x - tickLen, y + h); ctx.lineTo(x, y + h); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, y + h); ctx.lineTo(x, y + h + tickLen); ctx.stroke();
+
+            // Bottom-Right
+            ctx.beginPath(); ctx.moveTo(x + w, y + h); ctx.lineTo(x + w + tickLen, y + h); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + w, y + h); ctx.lineTo(x + w, y + h + tickLen); ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function download6x4Sheet() {
+            const dataUrl = generate6x4PrintSheet();
+            if (!dataUrl) return;
+
+            const link = document.createElement('a');
+            const ord = getOrder();
+            link.download = `SilverHalide_Sheet_6x4_${ord.id}_${todayStr(new Date())}_${selectedPreset}.png`;
+            logEvent('DOWNLOAD_SHEET');
+            link.href = dataUrl;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        async function triggerKioskPrint() {
+            const dataUrl = generate6x4PrintSheet();
+            if (!dataUrl) {
+                showAlert('Nothing to Print', 'Please select and crop a photo first.', 'ph-warning');
+                return;
+            }
+
+            const printSection = document.getElementById('print-section');
+            const img = new Image();
+            img.alt = 'Print Sheet';
+            img.src = dataUrl;
+
+            try {
+                await img.decode();
+            } catch (e) {
+                console.warn('Image decode failed, continuing to print anyway:', e);
+            }
+
+            printSection.innerHTML = '';
+            printSection.appendChild(img);
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    try {
+                        logEvent('PRINT');
+                        window.focus();
+                        window.print();
+                    } catch (err) {
+                        console.error('window.print() failed:', err);
+                        showAlert('Print Error', 'Could not open the print dialog. Please try again.', 'ph-warning');
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
